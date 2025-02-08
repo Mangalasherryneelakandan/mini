@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'recipage.dart'; // Import the Recipe Page
+import 'gropage.dart'; // Import the Groceries Page
 
 void main() {
   runApp(MyApp());
@@ -8,12 +10,16 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Drawer Example',
+      title: 'RINSHAS vepp app',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
       home: HomePage(),
+      routes: {
+        '/recipes': (context) => RecipeGridPage(), // Navigate to recipage.dart
+        '/groceries': (context) => ProductListPage(),  // Navigate to gropage.dart
+      },
     );
   }
 }
@@ -66,11 +72,19 @@ class HomePage extends StatelessWidget {
               ),
             ),
             ListTile(
-              leading: Icon(Icons.home),
-              title: Text('Home'),
+              leading: Icon(Icons.food_bank),
+              title: Text('Recipes'),
+              onTap: () {
+                Navigator.pop(context); // Close the drawer
+                Navigator.pushNamed(context, '/recipes'); // Go to recipage.dart
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.local_grocery_store),
+              title: Text('Groceries'),
               onTap: () {
                 Navigator.pop(context);
-                // Navigate to Home
+                Navigator.pushNamed(context, '/groceries'); // Go to gropage.dart
               },
             ),
             ListTile(
@@ -79,14 +93,6 @@ class HomePage extends StatelessWidget {
               onTap: () {
                 Navigator.pop(context);
                 // Navigate to Settings
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.contact_page),
-              title: Text('Contact Us'),
-              onTap: () {
-                Navigator.pop(context);
-                // Navigate to Contact Us
               },
             ),
             Divider(),

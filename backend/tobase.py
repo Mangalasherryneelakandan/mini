@@ -1,80 +1,141 @@
 import requests
 from bs4 import BeautifulSoup
-from google.cloud import language_v1
+import google.generativeai as genai
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials
+from firebase_admin import firestore
 
-# Initialize Firebase
-cred = credentials.Certificate("serviceAccountKey.json")  # Replace with your Firebase service account key
-firebase_admin.initialize_app(cred)
+# ----- CONFIGURATION -----
 
-# Get Firestore client
-db = firestore.client()
+# Gemini AI API Key
+GEMINI_API_KEY = "AIzaSyDpt626QWrqXg6OJmlGOBhOR-qZET2STbI"  # Replace with your actual API key
 
-# Initialize Google NLP client
-client = language_v1.LanguageServiceClient()
+# Firebase Credentials (download your service account key file)
+FIREBASE_CREDENTIALS_PATH = "serviceAccountKey.json"  # Replace with the correct path
 
-# Function to structure data using Google NLP
-def structure_data_using_google_nlp(raw_data):
-    document = language_v1.Document(
-        content=raw_data['name'] + "\n" + raw_data['ingredients'] + "\n" + raw_data['instructions'],
-        type_=language_v1.Document.Type.PLAIN_TEXT
-    )
+# Web Scraping Target
+TARGET_URL = "https://paleoleap.com/almond-banana-cinnamon-smoothie/"  # Replace with the actual URL you want to scrape
 
-    # Use Google NLP to analyze the document
-    response = client.analyze_entities(document=document)
+# Firebase Collection Name
+FIREBASE_COLLECTION = "scraped_data"  # The name of the collection to store data in
 
-    # Extract structured information (simple example)
-    entities = [entity.name for entity in response.entities]
-    structured_data = {
-        'name': raw_data['name'],
-        'ingredients': raw_data['ingredients'],
-        'instructions': raw_data['instructions'],
-        'entities': entities  # Extracted entities
-    }
+# --------------------------
 
-    return structured_data
+def initialize_gemini():
+    """Initializes the Gemini AI API."""
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel('gemini-pro')  # or 'gemini-pro-vision' if you need image support
+    return model
 
-# Function to scrape the website and get data
-def scrape_recipes(url):
-    response = requests.get(url)
-    soup = BeautifulSoup(response.content, 'html.parser')
 
-    recipes = []
+def initialize_firebase():
+    """Initializes the Firebase app."""
+    cred = credentials.Certificate(FIREBASE_CREDENTIALS_PATH)
+    firebase_admin.initialize_app(cred)
+    db = firestore.client()
+    return db
 
-    # Example scraping logic (adjust according to the website structure)
-    for recipe in soup.find_all('div', class_='recipe'):
-        raw_name = recipe.find('h2').text.strip()  # Recipe name in <h2> tag
-        raw_ingredients = recipe.find('ul', class_='ingredients').text.strip()  # Ingredients in <ul> tag
-        raw_instructions = recipe.find('p', class_='instructions').text.strip()  # Instructions in <p> tag
 
-        # Raw data that needs structuring
-        raw_data = {
-            "name": raw_name,
-            "ingredients": raw_ingredients,
-            "instructions": raw_instructions
-        }
+def scrape_website(url):
+    """Scrapes the specified URL and returns the text content."""
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+        soup = BeautifulSoup(response.content, 'html.parser')
 
-        # Use Google NLP to structure the raw data
-        structured_recipe = structure_data_using_google_nlp(raw_data)
-        recipes.append(structured_recipe)
+        # Extract relevant text.  Adapt this to your target website.
+        # This example extracts all the text inside <p> tags.  You might need to
+        # use different selectors (e.g., div, article, span, class names)
+        text_content = ' '.join([p.text for p in soup.find_all('p')])  # Concatenate paragraphs
 
-    return recipes
+        return text_content
+    except requests.exceptions.RequestException as e:
+        print(f"Error during web scraping: {e}")
+        return None  # Or raise the exception if you want the program to stop.
+    except Exception as e:
+        print(f"Error during web scraping (BeautifulSoup): {e}")
+        return None
 
-# URL of the website you want to scrape
-url = 'https://example.com/recipes'  # Replace with the actual URL
 
-# Scrape the website and structure the data
-scraped_recipes = scrape_recipes(url)
+def summarize_with_gemini(text, prompt_instructions="Summarize the following text in a concise and informative way, identifying the key points and main topics:", max_output_tokens=500):
+    """Summarizes the given text using Gemini AI."""
+    model = genai.GenerativeModel('gemini-pro')
 
-# Insert structured data into Firestore
-for recipe in scraped_recipes:
-    doc_ref = db.collection("recipes").document()  # Auto-generate document ID
-    doc_ref.set({
-        "name": recipe['name'],
-        "ingredients": recipe['ingredients'],
-        "instructions": recipe['instructions'],
-        "entities": recipe['entities']  # Store the structured entities
-    })
+    if not text:
+        print("No text to summarize.")
+        return None
 
-print("Data successfully inserted into Firestore!")
+    prompt = f"{prompt_instructions}\n\n{text}"
+
+    try:
+        response = model.generate_content(prompt, generation_config=genai.GenerationConfig(max_output_tokens=max_output_tokens))
+        return response.text
+    except Exception as e:
+        print(f"Error during Gemini API call: {e}")
+        return None
+
+
+def extract_information_with_gemini(text, information_request="Identify the key entities, locations, organizations, people, and events mentioned in the text.  Return as a structured summary.", max_output_tokens=800):
+    """Extracts important information from the text using Gemini AI.  You can customize the information_request."""
+    model = genai.GenerativeModel('gemini-pro')  # Or 'gemini-pro-vision'
+
+    if not text:
+        print("No text to extract information from.")
+        return None
+
+    prompt = f"{information_request}\n\n{text}"
+
+    try:
+        response = model.generate_content(prompt, generation_config=genai.GenerationConfig(max_output_tokens=max_output_tokens))
+        return response.text
+    except Exception as e:
+        print(f"Error during Gemini API call: {e}")
+        return None
+
+
+def store_in_firebase(db, data):
+    """Stores the data in a Firebase Firestore collection."""
+    try:
+        db.collection(FIREBASE_COLLECTION).add(data)
+        print("Data successfully stored in Firebase.")
+    except Exception as e:
+        print(f"Error storing data in Firebase: {e}")
+
+
+def main():
+    """Main function to orchestrate the scraping, AI processing, and storage."""
+    print("Initializing...")
+    gemini_model = initialize_gemini()
+    db = initialize_firebase()
+
+    print("Scraping website...")
+    scraped_text = scrape_website(TARGET_URL)
+
+    if scraped_text:
+        print("Summarizing with Gemini...")
+        summary = summarize_with_gemini(scraped_text)
+
+        print("Extracting key information with Gemini...")
+        extracted_info = extract_information_with_gemini(scraped_text)
+
+        if summary and extracted_info:
+            data_to_store = {
+                "original_text": scraped_text,
+                "summary": summary,
+                "extracted_information": extracted_info,
+                "source_url": TARGET_URL,
+                "timestamp": firestore.SERVER_TIMESTAMP  # Adds a timestamp for when the data was stored
+            }
+
+            print("Storing data in Firebase...")
+            store_in_firebase(db, data_to_store)
+        else:
+            print("Failed to summarize or extract information.  Check Gemini API output.")
+    else:
+        print("Failed to scrape website.  Check the URL and connection.")
+
+    print("Finished.")
+
+
+if __name__ == "__main__":
+    main()
