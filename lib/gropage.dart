@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:csv/csv.dart';
 
 class ProductListPage extends StatefulWidget {
   @override
@@ -8,18 +9,15 @@ class ProductListPage extends StatefulWidget {
 }
 
 class _ProductListPageState extends State<ProductListPage> {
-  List<dynamic> products = [];
+  List<List<dynamic>> products = [];
 
-  Future<void> fetchProducts() async {
-    final response = await http.get(Uri.parse("http://127.0.0.1:5000/fetch_products"));
+  Future<void> loadCSV() async {
+    final rawData = await rootBundle.loadString("backend/blinkit_products.csv");
+    List<List<dynamic>> csvData = const CsvToListConverter().convert(rawData);
 
-    if (response.statusCode == 200) {
-      setState(() {
-        products = jsonDecode(response.body);
-      });
-    } else {
-      throw Exception("Failed to load products");
-    }
+    setState(() {
+      products = csvData.sublist(1); // Skip the header row
+    });
   }
 
   @override
@@ -29,20 +27,49 @@ class _ProductListPageState extends State<ProductListPage> {
       body: Column(
         children: [
           ElevatedButton(
-            onPressed: fetchProducts,
-            child: Text("Fetch Products"),
+            onPressed: loadCSV,
+            child: Text("Load Products"),
           ),
           Expanded(
-            child: ListView.builder(
+            child: products.isEmpty
+                ? Center(child: Text("No products loaded"))
+                : GridView.builder(
+              padding: EdgeInsets.all(8),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+                childAspectRatio: 0.8,
+              ),
               itemCount: products.length,
               itemBuilder: (context, index) {
                 final product = products[index];
                 return Card(
-                  margin: EdgeInsets.all(8),
-                  child: ListTile(
-                    leading: Image.network(product["image"], width: 50, height: 50, fit: BoxFit.cover),
-                    title: Text(product["name"]),
-                    subtitle: Text(product["price"]),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Image.network(
+                          product[2], // Assuming 3rd column has image URLs
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Column(
+                          children: [
+                            Text(
+                              product[0], // Assuming 1st column has product name
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                              textAlign: TextAlign.center,
+                            ),
+                            Text("Price: ${product[1]}", style: TextStyle(color: Colors.green)),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 );
               },
