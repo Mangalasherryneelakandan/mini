@@ -1,10 +1,11 @@
-import scrapy
+from flask import Flask, jsonify, request
 import csv
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+
+app = Flask(__name__)
 
 class BlinkitScraper:
     def __init__(self):
@@ -15,11 +16,13 @@ class BlinkitScraper:
         options.add_argument(r"profile-directory=Profile 3")
         self.driver = webdriver.Chrome(options=options)
 
-    def scrape(self):
-        self.driver.get("https://blinkit.com/cn/fresh-vegetables/cid/1487/1489")
+    def scrape(self, query):
+        search_url = f"https://blinkit.com/s/?q={query}"
+        self.driver.get(search_url)
         try:
             wait = WebDriverWait(self.driver, 10)
             wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div[class*='Product__UpdatedPlpProductContainer']")))
+
             products = self.driver.find_elements(By.CSS_SELECTOR, "div[class*='Product__UpdatedPlpProductContainer']")
             product_data = []
             count = 0
@@ -39,16 +42,34 @@ class BlinkitScraper:
             # Save data to CSV
             with open("blinkit_products.csv", mode="w", newline="", encoding="utf-8") as file:
                 writer = csv.writer(file)
-                writer.writerow(["Product Name", "Price", "Image URL"])
+                writer.writerow(["Product Name", "Price", "Image URL"])  # CSV header
                 for item in product_data:
                     writer.writerow([item["name"], item["price"], item["image"]])
 
             print("Data saved to blinkit_products.csv")
+            return product_data
         except Exception as e:
             print(f"An error occurred: {e}")
+            return f"Error: {e}"
         finally:
             self.driver.quit()
 
-if __name__ == "__main__":
+
+@app.route('/scrape', methods=['GET'])
+def scrape_data():
+    query = request.args.get('query', '')
+    if not query:
+        return jsonify({"message": "Query parameter is required!"}), 400
+
     scraper = BlinkitScraper()
-    scraper.scrape()
+    result = scraper.scrape(query)
+
+    # Return the scraped products as a JSON response
+    if isinstance(result, list):
+        return jsonify({"products": result, "message": "Data scraped successfully"})
+    else:
+        return jsonify({"message": result}), 500
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
