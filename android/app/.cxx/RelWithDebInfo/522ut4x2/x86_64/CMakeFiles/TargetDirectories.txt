@@ -1,0 +1,2 @@
+C:/Users/ASUS/StudioProjects/mini/android/app/.cxx/RelWithDebInfo/522ut4x2/x86_64/CMakeFiles/edit_cache.dir
+C:/Users/ASUS/StudioProjects/mini/android/app/.cxx/RelWithDebInfo/522ut4x2/x86_64/CMakeFiles/rebuild_cache.dir
