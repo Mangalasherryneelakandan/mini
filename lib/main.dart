@@ -1,186 +1,184 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'recipage.dart'; // Import the Recipe Page
-import 'gropage.dart'; // Import the Groceries Page
-import 'srchpage.dart'; // Import the SearchPage
-import 'inventory.dart'; // Import the Inventory Page
-
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:grocery/recis.dart'; // Recipes page
+import 'package:grocery/shop.dart'; // Shopping page
+import 'gropage.dart'; // Pantry page
+import 'pantrymodel.dart'; // PantryItem model
+import 'package:firebase_messaging/firebase_messaging.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final themeMode = await ThemeManager.getThemeMode();
-  runApp(MyApp(themeMode: themeMode));
+
+  // Initialize Firebase
+  await Firebase.initializeApp(
+    options: const FirebaseOptions(
+      apiKey: "AIzaSyCsXT3crd7EX2GcUWVUGATysu39-TEG8Yw",
+      authDomain: "mini-34f09.firebaseapp.com",
+      projectId: "mini-34f09",
+      storageBucket: "mini-34f09.appspot.com",
+      messagingSenderId: "730089535973",
+      appId: "1:730089535973:web:63a37ee6037d48aed7d70c",
+      measurementId: "G-FTC61RJPVJ",
+    ),
+  );
+  if (await FirebaseMessaging.instance.isSupported()) {
+    FirebaseMessaging.instance.setAutoInitEnabled(true);
+  }
+
+  // Initialize local notifications
+  await NotificationService().initNotification();
+
+  runApp(MyApp());
 }
 
-class MyApp extends StatefulWidget {
-  final ThemeMode themeMode;
-  MyApp({required this.themeMode});
-
+class MyApp extends StatelessWidget {
   @override
-  _MyAppState createState() => _MyAppState();
+  Widget build(BuildContext context) {
+    return MaterialApp(
+        debugShowCheckedModeBanner: false,
+      title: 'GROCIP',
+      theme: ThemeData(
+        primarySwatch: Colors.green,
+      ),
+      home: MainHomeScreen(),
+    );
+  }
 }
 
-class _MyAppState extends State<MyApp> {
-  late ThemeMode _themeMode;
+class MainHomeScreen extends StatefulWidget {
+  @override
+  _MainHomeScreenState createState() => _MainHomeScreenState();
+}
+
+class _MainHomeScreenState extends State<MainHomeScreen> {
+  int _selectedIndex = 0; // Track the selected index
+  late List<Widget> _pages; // Declare the pages list
+
+  // User ID will be loaded after successful authentication
+  String userId = '';
 
   @override
   void initState() {
     super.initState();
-    _themeMode = widget.themeMode;
+    _initializeUser();
   }
 
-  void _toggleTheme() async {
-    final newTheme = _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
-    await ThemeManager.saveThemeMode(newTheme);
+  // Initialize user data from FirebaseAuth
+  Future<void> _initializeUser() async {
+    FirebaseAuth auth = FirebaseAuth.instance;
+    User? user = auth.currentUser;
+
+    if (user != null) {
+      setState(() {
+        userId = user.uid; // Assign userId if authenticated
+      });
+    } else {
+      // Handle user not logged in
+      setState(() {
+        userId = 'defaultUser123'; // Assign a default value
+      });
+    }
+
+    // Initialize the pages list after userId is set
+    _pages = [
+      PantryPage(), // Pass userId to load pantry data
+      RecipesPage(), // Recipes page
+      ShoppingPage(userId: userId), // Shopping page
+    ];
+  }
+
+  // Handle navigation between pages
+  void _onItemTapped(int index) {
     setState(() {
-      _themeMode = newTheme;
+      _selectedIndex = index; // Update selected index
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'GROCIP',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData.light(),
-      darkTheme: ThemeData.dark(),
-      themeMode: _themeMode,
-      home: HomePage(onThemeToggle: _toggleTheme),
-      routes: {
-        '/recipes': (context) => RecipeGridPage(),
-        '/groceries': (context) => ProductListPage(),
-        '/search': (context) => SearchPage(),
-        '/inventory': (context) => ManageInventoryPage(),
-      },
+    // Show loading indicator if userId is not ready
+    if (userId.isEmpty) {
+      return Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('GROCIP'),
+        backgroundColor: Colors.green,
+      ),
+      body: _pages[_selectedIndex], // Show selected page
+      bottomNavigationBar: BottomNavigationBar(
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.kitchen),
+            label: 'Pantry',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.receipt),
+            label: 'Recipes',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.shopping_cart),
+            label: 'Shop',
+          ),
+        ],
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped, // Handle item tap
+      ),
     );
   }
 }
 
-class ThemeManager {
-  static const String _themeKey = 'themeMode';
+// ============================
+// 🔔 Notification Service
+// ============================
+class NotificationService {
+  static final NotificationService _notificationService =
+  NotificationService._internal();
 
-  static Future<void> saveThemeMode(ThemeMode mode) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_themeKey, mode == ThemeMode.dark);
+  factory NotificationService() {
+    return _notificationService;
   }
 
-  static Future<ThemeMode> getThemeMode() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_themeKey) ?? false ? ThemeMode.dark : ThemeMode.light;
+  NotificationService._internal();
+
+  final FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin =
+  FlutterLocalNotificationsPlugin();
+
+  Future<void> initNotification() async {
+    const AndroidInitializationSettings androidSettings =
+    AndroidInitializationSettings('@mipmap/ic_launcher');
+
+    const InitializationSettings settings = InitializationSettings(
+      android: androidSettings,
+    );
+
+    await _flutterLocalNotificationsPlugin.initialize(settings);
   }
-}
 
-class HomePage extends StatelessWidget {
-  final VoidCallback onThemeToggle;
+  Future<void> showNotification(String title, String body) async {
+    const AndroidNotificationDetails androidDetails =
+    AndroidNotificationDetails(
+      'channel_id',
+      'Expiry Notifications',
+      importance: Importance.max,
+      priority: Priority.high,
+    );
 
-  HomePage({required this.onThemeToggle});
+    const NotificationDetails platformDetails = NotificationDetails(
+      android: androidDetails,
+    );
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('GROCIP'),
-      ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: <Widget>[
-            DrawerHeader(
-              decoration: BoxDecoration(color: Colors.blue),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CircleAvatar(
-                    radius: 30,
-                    backgroundColor: Colors.white,
-                    child: Icon(Icons.person, size: 40, color: Colors.blue),
-                  ),
-                  SizedBox(height: 10),
-                  Text(
-                    'Welcome!',
-                    style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    'user@example.com',
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
-                ],
-              ),
-            ),
-            ListTile(
-              leading: Icon(Icons.food_bank),
-              title: Text('Recipes'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/recipes');
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.search),
-              title: Text('Search Groceries'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/search');
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.inventory),
-              title: Text('Manage Inventory'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/inventory');
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.store),
-              title: Text('Go to Product List'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/groceries');
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.settings),
-              title: Text('Settings'),
-              onTap: () {
-                Navigator.pop(context);
-              },
-            ),
-            Divider(),
-            ListTile(
-              leading: Icon(Icons.logout),
-              title: Text('Logout'),
-              onTap: () {
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        ),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              'Swipe from the left or click on the menu icon to open the drawer.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 16),
-            ),
-            SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pushNamed(context, '/inventory');
-              },
-              child: Text('Manage Inventory'),
-            ),
-          ],
-        ),
-      ),
-
-      floatingActionButton: FloatingActionButton(
-        onPressed: onThemeToggle,
-        child: Icon(Icons.brightness_6),
-      ),
+    await _flutterLocalNotificationsPlugin.show(
+      0,
+      title,
+      body,
+      platformDetails,
     );
   }
 }

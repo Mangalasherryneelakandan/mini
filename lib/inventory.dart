@@ -1,6 +1,5 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ManageInventoryPage extends StatefulWidget {
   @override
@@ -17,20 +16,14 @@ class _ManageInventoryPageState extends State<ManageInventoryPage> {
     _loadInventory();
   }
 
-  // 🔹 Get the file location
-  Future<File> _getInventoryFile() async {
-    final directory = await getApplicationDocumentsDirectory();
-    return File('backend/inventory.txt');
-  }
-
-  // 🔹 Load inventory from file
+  // 🔹 Load inventory from shared preferences
   Future<void> _loadInventory() async {
     try {
-      final file = await _getInventoryFile();
-      if (await file.exists()) {
-        List<String> lines = await file.readAsLines();
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      List<String>? savedInventory = prefs.getStringList('inventory');
+      if (savedInventory != null) {
         setState(() {
-          inventory = lines;
+          inventory = savedInventory;
         });
       }
     } catch (e) {
@@ -38,10 +31,10 @@ class _ManageInventoryPageState extends State<ManageInventoryPage> {
     }
   }
 
-  // 🔹 Save inventory to file
+  // 🔹 Save inventory to shared preferences
   Future<void> _saveInventory() async {
-    final file = await _getInventoryFile();
-    await file.writeAsString(inventory.join("\n"));
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('inventory', inventory);
   }
 
   // 🔹 Add an ingredient
@@ -68,11 +61,11 @@ class _ManageInventoryPageState extends State<ManageInventoryPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Manage Ingredients"),
+        title: const Text("Manage Ingredients"),
         backgroundColor: Colors.green,
       ),
       body: Padding(
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: Column(
           children: [
             // 🔹 Input field to add an ingredient
@@ -81,25 +74,25 @@ class _ManageInventoryPageState extends State<ManageInventoryPage> {
                 Expanded(
                   child: TextField(
                     controller: ingredientController,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                       labelText: "Enter ingredient",
                       border: OutlineInputBorder(),
                     ),
                   ),
                 ),
-                SizedBox(width: 10),
+                const SizedBox(width: 10),
                 ElevatedButton(
                   onPressed: _addIngredient,
-                  child: Text("Add"),
+                  child: const Text("Add"),
                 ),
               ],
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
 
             // 🔹 Display the list of saved ingredients
             Expanded(
               child: inventory.isEmpty
-                  ? Center(child: Text("No ingredients added"))
+                  ? const Center(child: Text("No ingredients added"))
                   : ListView.builder(
                 itemCount: inventory.length,
                 itemBuilder: (context, index) {
@@ -107,7 +100,7 @@ class _ManageInventoryPageState extends State<ManageInventoryPage> {
                     child: ListTile(
                       title: Text(inventory[index]),
                       trailing: IconButton(
-                        icon: Icon(Icons.delete, color: Colors.red),
+                        icon: const Icon(Icons.delete, color: Colors.red),
                         onPressed: () => _removeIngredient(inventory[index]),
                       ),
                     ),
